@@ -1,0 +1,87 @@
+# ========================================
+# FNO 训练配置文件 - 真实数据
+# ========================================
+
+# 训练参数
+train_params:
+  learning_rate: 0.0005
+  batch_size: 64
+  num_epochs: 200
+  device: 'cuda'  # 'cuda' or 'cpu'
+  weight_decay: 1.0e-4
+  gradient_clip: 1.0  # 梯度裁剪阈值，设为 null 则不裁剪
+  predict_mode: offset  # 'offset' or 'absolute'
+  
+# 数据参数
+data_params:
+  # 使用真实数据
+  use_real_data: true
+  
+  # 真实数据路径
+  image_dir: '/home/project_cx/G_IR_Diffusion/data/fig_gray'  # 图像目录（包含 9985_cifar_airplane.jpg 等）
+  mesh_dir: '/home/project_cx/G_IR_Diffusion/data/fig_gray_ot_mesh_npy'  # OT网格目录（包含 9985_cifar_airplane_mesh.npy 等）
+  
+  # 图像预处理
+  target_size: null  # 目标图像尺寸 [H, W]，设为 null 则保持原尺寸（推荐）
+  
+  # 数据集划分
+  train_ratio: 0.8  # 训练集比例
+  val_ratio: 0.2    # 验证集比例
+  
+  # DataLoader 参数
+  num_workers: 4
+  pin_memory: true
+  # 测度与坐标归一化（真实数据建议开启并设置真实域范围）
+  to_target_measure: true
+  measure_eps: 0.2
+  normalize_coords: true
+  # 示例：若原坐标域是 [-5,5]×[-5,5]
+  domain_bounds: [-5.0, 5.0, -5.0, 5.0]
+  
+  # 以下参数仅在 use_real_data=false 时使用
+  num_train_samples: 1000
+  num_val_samples: 200
+  image_size: 64
+
+# 模型参数
+model_params:
+  modes1: 12  # 傅里叶模式数 (x方向)
+  modes2: 12  # 傅里叶模式数 (y方向)
+  width: 32   # 隐层宽度
+  
+# 日志参数
+log_params:
+  log_dir_base: './outputs'
+  experiment_name: 'offset_only_data_mse'
+  save_freq: 10  # 每多少个epoch保存一次checkpoint
+  val_freq: 5    # 每多少个epoch进行一次验证
+  
+# 可视化参数
+visualization_params:
+  enable_mesh_vis: true  # 是否启用网格可视化
+  vis_num_samples: 1     # 可视化的样本数量（单通道时有效）
+  
+# checkpoint 参数
+checkpoint_params:
+  resume_from_checkpoint: null  # 断点续训路径，如 './outputs/xxx/checkpoints/last.pth'
+  save_best: true  # 是否保存最优模型
+  
+# 学习率调度器参数
+scheduler_params:
+  type: 'CosineAnnealingLR'  # 'StepLR', 'CosineAnnealingLR', 'ReduceLROnPlateau'
+  T_max: 100  # CosineAnnealingLR 参数
+  step_size: 30  # StepLR 参数
+  gamma: 0.5  # StepLR 参数dd
+  patience: 10  # ReduceLROnPlateau 参数
+  
+# 随机种子
+seed: 42
+
+# 损失参数（可配置复合损失）
+loss_params:
+  w_data: 1.0
+  w_curl: 0. #1.0e-3 
+  w_lap: 0. #1.0e-4
+  w_range: 0.0
+  huber_beta: 0.5 #0.01
+

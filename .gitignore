@@ -1,0 +1,20 @@
+# 忽略 outputs 文件夹及其所有内容
+outputs/
+
+# 忽略 tensorboard 日志（假设在 logs 或 runs 目录中）
+runs/
+logs/
+
+# 忽略 checkpoint 文件
+*.ckpt
+*.pth
+*.pt
+
+# 忽略临时文件
+__pycache__/
+*.pyc
+*.tmp
+
+# 忽略系统文件
+.DS_Store
+Thumbs.db
