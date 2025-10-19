@@ -187,8 +187,8 @@ class Trainer:
             self.optimizer.zero_grad()
             outputs = self.model(inputs)  # (B, 2, H, W)
             
-            # 计算损失
-            loss = self.loss_fn(outputs, targets)
+            # 计算损失（传入base_grid用于Beltrami约束）
+            loss = self.loss_fn(outputs, targets, base_grid=base_grid)
             
             # 反向传播
             loss.backward()
@@ -248,8 +248,8 @@ class Trainer:
                 # 前向传播
                 outputs = self.model(inputs)
                 
-                # 计算损失
-                loss = self.loss_fn(outputs, targets)
+                # 计算损失（传入base_grid用于Beltrami约束）
+                loss = self.loss_fn(outputs, targets, base_grid=base_grid)
                 
                 # 更新统计
                 loss_meter.update(loss.item(), inputs.size(0))

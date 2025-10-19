@@ -15,6 +15,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from src.model import FNO2d
 from src.datasets import get_data_loaders
 from src.trainer import Trainer
+from src.loss import create_loss_fn
 from src.utils import (
     setup_seed, 
     load_config, 
@@ -124,60 +125,6 @@ def create_scheduler(optimizer, config):
     return scheduler
 
 
-def create_loss_fn(config=None):
-    """
-    复合损失：
-      L = w_data * SmoothL1 + w_curl * ||curl||^2 + w_lap * ||Δu||^2 + w_range * hinge_out_of_bounds
-    适用于 predict_mode='offset' 或 'absolute'。
-    """
-    cfg = (config or {}).get('loss_params', {}) if isinstance(config, dict) else {}
-    w_data  = cfg.get('w_data', 1.0)
-    w_curl  = cfg.get('w_curl', 0.0)
-    w_lap   = cfg.get('w_lap', 0.0)
-    w_range = cfg.get('w_range', 0.0)
-    huber_beta = cfg.get('huber_beta', 0.5)
-    def grad_xy(f):
-        # f: (B,1,H,W)
-        fx = f[..., 1:, :] - f[..., :-1, :]
-        fy = f[..., :, 1:] - f[..., :, :-1]
-        return fx, fy
-
-    def laplacian(u):
-        # u: (B,2,H,W)
-        import torch.nn.functional as F
-        k = torch.tensor([[0,1,0],[1,-4,1],[0,1,0]], dtype=u.dtype, device=u.device).view(1,1,3,3)
-        k = k.repeat(u.size(1), 1, 1, 1)
-        return torch.conv2d(u, k, padding=1, groups=u.size(1))
-
-    def hinge_out_of_bounds(abs_coords):
-        oob_low  = torch.relu(0.0 - abs_coords)
-        oob_high = torch.relu(abs_coords - 1.0)
-        return (oob_low + oob_high).abs().mean()
-
-    smooth_l1 = torch.nn.SmoothL1Loss(beta=huber_beta)
-    mse_loss = torch.nn.MSELoss()
-    predict_mode = (config or {}).get('train_params', {}).get('predict_mode', 'offset')
-
-    def loss_fn(pred, target):
-        # pred, target: (B,2,H,W)
-        L = 0.0
-        L = L + w_data * mse_loss(pred, target)
-
-        if w_curl > 0.0:
-            px_x, px_y = grad_xy(pred[:, 0:1])
-            py_x, py_y = grad_xy(pred[:, 1:2])
-            curl = (py_x[..., :, :-1] - px_y[..., :-1, :])
-            L = L + w_curl * (curl.pow(2).mean())
-
-        if w_lap > 0.0:
-            L = L + w_lap * (laplacian(pred).pow(2).mean())
-
-        if w_range > 0.0 and predict_mode == 'absolute':
-            L = L + w_range * hinge_out_of_bounds(pred)
-
-        return L
-
-    return loss_fn
 
 
 def main(args):

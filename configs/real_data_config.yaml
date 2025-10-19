@@ -18,8 +18,8 @@ data_params:
   use_real_data: true
   
   # 真实数据路径
-  image_dir: '/home/project_cx/G_IR_Diffusion/data/fig_gray'  # 图像目录（包含 9985_cifar_airplane.jpg 等）
-  mesh_dir: '/home/project_cx/G_IR_Diffusion/data/fig_gray_ot_mesh_npy'  # OT网格目录（包含 9985_cifar_airplane_mesh.npy 等）
+  image_dir: '/home/project_cx/G_IR_Diffusion/data/minist/Original_Figure'  # 图像目录（包含 9985_cifar_airplane.jpg 等）
+  mesh_dir: '/home/project_cx/G_IR_Diffusion/data/minist/0_2/OT_NPY'  # OT网格目录（包含 9985_cifar_airplane_mesh.npy 等）
   
   # 图像预处理
   target_size: null  # 目标图像尺寸 [H, W]，设为 null 则保持原尺寸（推荐）
@@ -34,7 +34,7 @@ data_params:
   # 测度与坐标归一化（真实数据建议开启并设置真实域范围）
   to_target_measure: true
   measure_eps: 0.2
-  normalize_coords: true
+  normalize_coords: false
   # 示例：若原坐标域是 [-5,5]×[-5,5]
   domain_bounds: [-5.0, 5.0, -5.0, 5.0]
   
@@ -52,7 +52,7 @@ model_params:
 # 日志参数
 log_params:
   log_dir_base: './outputs'
-  experiment_name: 'offset_only_data_mse'
+  experiment_name: 'minist_smoothl1'
   save_freq: 10  # 每多少个epoch保存一次checkpoint
   val_freq: 5    # 每多少个epoch进行一次验证
   
@@ -84,4 +84,5 @@ loss_params:
   w_lap: 0. #1.0e-4
   w_range: 0.0
   huber_beta: 0.5 #0.01
+  w_beltrami: 1.0e-3
 
