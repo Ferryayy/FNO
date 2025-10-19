@@ -52,9 +52,9 @@ python main.py
 **OT网格目录结构：**
 ```
 /path/to/meshes/
-├── 1_mesh_name.m
-├── 2_mesh_name.m
-├── 3_another_mesh.m
+├── 1_mesh_name.npy
+├── 2_mesh_name.npy
+├── 3_another_mesh.npy
 └── ...
 ```
 
