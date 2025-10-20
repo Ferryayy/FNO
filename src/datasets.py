@@ -192,7 +192,8 @@ def normalize_coords(ot_map, bounds):
     norm = ot_map.clone()
     norm[0] = (norm[0] - x_min) / (x_max - x_min)
     norm[1] = (norm[1] - y_min) / (y_max - y_min)
-    return norm.clamp(0.0, 1.0)
+    # return norm.clamp(0.0, 1.0)
+    return norm
 
 
 def maybe_to_measure_and_norm(image, ot_map, cfg):

@@ -69,7 +69,9 @@ class CompositeLoss:
                                                  在计算Beltrami约束时需要。
         
         Returns:
-            torch.Tensor: 总损失（标量）
+            tuple: (total_loss, loss_dict)
+                - total_loss (torch.Tensor): 总损失（标量）
+                - loss_dict (dict): 各项损失的字典 {'data': float, 'curl': float, ...}
         """
         total_loss = 0.0
         loss_dict = {}
@@ -104,7 +106,10 @@ class CompositeLoss:
             total_loss = total_loss + self.w_beltrami * beltrami_loss
             loss_dict['beltrami'] = beltrami_loss.item()
         
-        return total_loss
+        # 记录总损失
+        loss_dict['total'] = total_loss.item()
+        
+        return total_loss, loss_dict
     
     def _compute_curl_loss(self, u):
         """

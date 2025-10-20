@@ -96,9 +96,12 @@ class Trainer:
         # 标准网格 (与模型 get_grid 的 [0,1] 一致)
         with torch.no_grad():
             H, W = inputs.size(2), inputs.size(3)
-            gridx = torch.linspace(0, 1, H, device=inputs.device).view(1, -1, 1).expand(inputs.size(0), -1, W)
-            gridy = torch.linspace(0, 1, W, device=inputs.device).view(1, 1, -1).expand(inputs.size(0), H, -1)
-            base_grid = torch.stack([gridx, gridy], dim=1)  # (B*,2,H,W)
+            # gridx = torch.linspace(0, 1, H, device=inputs.device).view(1, -1, 1).expand(inputs.size(0), -1, W)
+            # gridy = torch.linspace(0, 1, W, device=inputs.device).view(1, 1, -1).expand(inputs.size(0), H, -1)
+            # base_grid = torch.stack([gridx, gridy], dim=1)  # (B*,2,H,W)
+            gridx = torch.linspace(0, 1, W, device=inputs.device).view(1, 1, -1).expand(inputs.size(0), H, -1)
+            gridy = torch.linspace(1, 0, H, device=inputs.device).view(1, -1, 1).expand(inputs.size(0), -1, W)
+            base_grid = torch.stack([gridx, gridy], dim=1)  # shape: (B,2,H,W)
 
         predict_mode = self.config['train_params'].get('predict_mode', 'offset')
         if predict_mode == 'offset':
@@ -176,6 +179,8 @@ class Trainer:
         """
         self.model.train()
         loss_meter = AverageMeter()
+        # 为各项损失创建meter
+        loss_components_meters = {}
         
         # 使用 tqdm 显示进度条
         pbar = tqdm(self.train_loader, desc=f"训练 Epoch {epoch+1}")
@@ -188,7 +193,7 @@ class Trainer:
             outputs = self.model(inputs)  # (B, 2, H, W)
             
             # 计算损失（传入base_grid用于Beltrami约束）
-            loss = self.loss_fn(outputs, targets, base_grid=base_grid)
+            loss, loss_dict = self.loss_fn(outputs, targets, base_grid=base_grid)
             
             # 反向传播
             loss.backward()
@@ -199,10 +204,16 @@ class Trainer:
             
             self.optimizer.step()
             
-            # 更新统计
+            # 更新总损失统计
             loss_meter.update(loss.item(), inputs.size(0))
             
-            # 更新进度条
+            # 更新各项损失统计
+            for key, value in loss_dict.items():
+                if key not in loss_components_meters:
+                    loss_components_meters[key] = AverageMeter()
+                loss_components_meters[key].update(value, inputs.size(0))
+            
+            # 更新进度条（只显示总损失）
             pbar.set_postfix({'loss': f'{loss_meter.avg:.6f}'})
             
             # 记录到 TensorBoard (每个batch)
@@ -211,7 +222,19 @@ class Trainer:
         
         # 记录 epoch 级别的损失
         self.writer.add_scalar('Train/Loss_Epoch', loss_meter.avg, epoch)
-        self.logger.info(f"训练损失: {loss_meter.avg:.6f}")
+        
+        # 打印总损失和各项损失
+        loss_info = f"训练损失: {loss_meter.avg:.6f}"
+        if loss_components_meters:
+            # 构建分项损失字符串
+            components_str = " | ".join([
+                f"{key}: {meter.avg:.6f}" 
+                for key, meter in loss_components_meters.items() 
+                if key != 'total'  # 避免重复显示total
+            ])
+            loss_info += f" ({components_str})"
+        
+        self.logger.info(loss_info)
         
         return loss_meter.avg
     
@@ -227,6 +250,8 @@ class Trainer:
         """
         self.model.eval()
         loss_meter = AverageMeter()
+        # 为各项损失创建meter
+        loss_components_meters = {}
         
         # 用于存储第一个batch的可视化数据
         first_batch_raw_inputs = None
@@ -249,12 +274,18 @@ class Trainer:
                 outputs = self.model(inputs)
                 
                 # 计算损失（传入base_grid用于Beltrami约束）
-                loss = self.loss_fn(outputs, targets, base_grid=base_grid)
+                loss, loss_dict = self.loss_fn(outputs, targets, base_grid=base_grid)
                 
-                # 更新统计
+                # 更新总损失统计
                 loss_meter.update(loss.item(), inputs.size(0))
                 
-                # 更新进度条
+                # 更新各项损失统计
+                for key, value in loss_dict.items():
+                    if key not in loss_components_meters:
+                        loss_components_meters[key] = AverageMeter()
+                    loss_components_meters[key].update(value, inputs.size(0))
+                
+                # 更新进度条（只显示总损失）
                 pbar.set_postfix({'val_loss': f'{loss_meter.avg:.6f}'})
                 
                 # 保存第一个batch的处理后数据用于可视化
@@ -264,7 +295,19 @@ class Trainer:
         
         # 记录到 TensorBoard
         self.writer.add_scalar('Val/Loss', loss_meter.avg, epoch)
-        self.logger.info(f"验证损失: {loss_meter.avg:.6f}")
+        
+        # 打印总损失和各项损失
+        loss_info = f"验证损失: {loss_meter.avg:.6f}"
+        if loss_components_meters:
+            # 构建分项损失字符串
+            components_str = " | ".join([
+                f"{key}: {meter.avg:.6f}" 
+                for key, meter in loss_components_meters.items() 
+                if key != 'total'  # 避免重复显示total
+            ])
+            loss_info += f" ({components_str})"
+        
+        self.logger.info(loss_info)
         
         # 网格可视化
         vis_params = self.config.get('visualization_params', {})

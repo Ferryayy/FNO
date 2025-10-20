@@ -52,7 +52,7 @@ model_params:
 # 日志参数
 log_params:
   log_dir_base: './outputs'
-  experiment_name: 'minist_smoothl1'
+  experiment_name: 'minist_smoothl1_beltrami'
   save_freq: 10  # 每多少个epoch保存一次checkpoint
   val_freq: 5    # 每多少个epoch进行一次验证
   
@@ -79,10 +79,10 @@ seed: 42
 
 # 损失参数（可配置复合损失）
 loss_params:
-  w_data: 1.0
-  w_curl: 0. #1.0e-3 
-  w_lap: 0. #1.0e-4
+  w_data: 1
+  w_curl: 1.0e-3 
+  w_lap: 1.0e-4
   w_range: 0.0
-  huber_beta: 0.5 #0.01
+  huber_beta: 0.05 #0.01
   w_beltrami: 1.0e-3
 
