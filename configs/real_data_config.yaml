@@ -2,87 +2,424 @@
 # FNO 训练配置文件 - 真实数据
 # ========================================
 
-# 训练参数
+# ==================== 训练参数 ====================
 train_params:
   learning_rate: 0.0005
-  batch_size: 64
+  batch_size: 128
   num_epochs: 200
-  device: 'cuda'  # 'cuda' or 'cpu'
-  weight_decay: 1.0e-4
-  gradient_clip: 1.0  # 梯度裁剪阈值，设为 null 则不裁剪
-  predict_mode: offset  # 'offset' or 'absolute'
+  device: 'cuda'
   
-# 数据参数
+  # 权重衰减（L2正则化）：防止过拟合
+  # - 建议范围：1e-6 到 1e-3
+  # - 较大值：正则化更强，模型更简单，可能欠拟合
+  # - 较小值或0：模型容量大，可能过拟合
+  # - 推荐：1e-4（标准值）
+  weight_decay: 1.0e-4
+  
+  # 梯度裁剪：防止梯度爆炸
+  # - 建议范围：0.5 到 5.0
+  # - null 或不设置：不使用梯度裁剪
+  # - 推荐：如果训练不稳定或出现NaN，设置为1.0
+  gradient_clip: 1.0
+  
+  # 预测模式：模型输出的含义
+  # - 'offset': 预测相对于规则网格的偏移量（推荐）
+  #   * 优点：数值范围小，更容易学习
+  #   * 适用场景：网格变形较小的情况
+  # - 'absolute': 直接预测绝对坐标
+  #   * 适用场景：网格变形很大的情况
+  predict_mode: offset
+  
+# ==================== 数据参数 ====================
 data_params:
-  # 使用真实数据
+  # 数据来源
+  # - true: 使用真实数据（从image_dir和mesh_dir加载）
+  # - false: 使用合成数据（随机生成，用于测试）
   use_real_data: true
   
-  # 真实数据路径
-  image_dir: '/home/project_cx/G_IR_Diffusion/data/minist/Original_Figure'  # 图像目录（包含 9985_cifar_airplane.jpg 等）
-  mesh_dir: '/home/project_cx/G_IR_Diffusion/data/minist/0_2/OT_NPY'  # OT网格目录（包含 9985_cifar_airplane_mesh.npy 等）
+  # ===== 真实数据路径（use_real_data=true 时使用） =====
+  # 图像目录：包含原始图像文件（.jpg, .png等）
+  # - 要求：图像文件名与网格文件名对应
+  # - 示例：9985_cifar_airplane.jpg 对应 9985_cifar_airplane_mesh.npy
+  image_dir: '/home/project_zq/data/image'
+  
+  # 网格目录：包含对应的网格坐标文件（.npy格式）
+  # - 格式要求：shape = (2, H, W)，表示每个像素的(x,y)坐标
+  # - 坐标含义：OT（最优传输）变换后的网格位置
+  mesh_dir: '/home/project_zq/data/qcmesh_npy'
   
   # 图像预处理
-  target_size: null  # 目标图像尺寸 [H, W]，设为 null 则保持原尺寸（推荐）
+  # - null: 保持原始尺寸（推荐，避免插值损失）
+  # - [H, W]: 调整到指定尺寸，如 [64, 64]
+  # 注意：调整尺寸会同时调整图像和网格坐标
+  target_size: null
   
-  # 数据集划分
-  train_ratio: 0.8  # 训练集比例
-  val_ratio: 0.2    # 验证集比例
+  train_ratio: 0.8
+  val_ratio: 0.2
   
-  # DataLoader 参数
-  num_workers: 4
+  # ===== DataLoader 参数 =====
+  # 数据加载的并行工作进程数
+  # - 0: 主进程加载（简单但慢）
+  # - 4-8: 推荐值，加快数据加载
+  # - 注意：过大会占用过多CPU和内存
+  num_workers: 8
+  
+  # 是否将数据预加载到固定内存（pinned memory）
+  # - true: 加快CPU到GPU的数据传输（推荐）
+  # - false: 节省内存
   pin_memory: true
-  # 测度与坐标归一化（真实数据建议开启并设置真实域范围）
+  
+  # ===== 测度变换参数 =====
+  # 是否将源测度（图像）转换为目标测度
+  # - true: 对图像进行测度变换，使其更接近目标分布（推荐用于OT任务）
+  # - false: 使用原始图像强度
   to_target_measure: true
-  measure_eps: 0.2
-  normalize_coords: false
-  # 示例：若原坐标域是 [-5,5]×[-5,5]
+  
+  # 测度变换的平滑参数
+  # - 较大值（0.5）：变换更平滑，但可能损失细节
+  # - 较小值（0.1）：保留更多细节，但可能有噪声
+  # - 推荐：0.2
+  measure_eps: 0.
+  
+  # 是否归一化坐标到 [0, 1]
+  # - false: 保持原始坐标范围（需要设置domain_bounds）
+  # - true: 归一化到 [0, 1]（简化学习）
+  normalize_coords: true
+  
+  # 原始坐标域的范围：[x_min, x_max, y_min, y_max]
+  # - 用于将坐标归一化或反归一化
+  # - 示例：[-5.0, 5.0, -5.0, 5.0] 表示 x∈[-5,5], y∈[-5,5]
+  # - 注意：需要根据实际网格数据的坐标范围设置
   domain_bounds: [-5.0, 5.0, -5.0, 5.0]
   
-  # 以下参数仅在 use_real_data=false 时使用
+  # ===== 合成数据参数（use_real_data=false 时使用） =====
+  # 训练集和验证集的样本数量
   num_train_samples: 1000
   num_val_samples: 200
+  
+  # 合成图像的尺寸
   image_size: 64
 
-# 模型参数
+# ==================== 模型参数 ====================
 model_params:
-  modes1: 12  # 傅里叶模式数 (x方向)
-  modes2: 12  # 傅里叶模式数 (y方向)
-  width: 32   # 隐层宽度
+  # 傅里叶模式数（频域截断）
+  # - 控制模型在频域的表达能力
+  # - 较大值（16-32）：捕捉更多细节，但参数量大，可能过拟合
+  # - 较小值（8-12）：模型简单，训练快，适合低分辨率
+  # - 推荐：
+  #   * 64x64图像：modes=12
+  #   * 128x128图像：modes=16
+  #   * 256x256图像：modes=20-24
+  modes1: 16  # x方向（宽度方向）的傅里叶模式数
+  modes2: 16  # y方向（高度方向）的傅里叶模式数
   
-# 日志参数
+  # 隐藏层宽度（通道数）
+  # - 控制每层特征图的通道数
+  # - 较大值（64-128）：表达能力强，但显存占用大
+  # - 较小值（16-32）：轻量级，训练快
+  # - 推荐：32（平衡性能和效率）
+  # - 注意：width增大会显著增加显存占用
+  width: 32
+  
+# ==================== 日志与输出参数 ====================
 log_params:
+  # 输出目录基础路径
+  # - 所有实验结果都保存在这里
+  # - 结构：log_dir_base/experiment_name_timestamp/
   log_dir_base: './outputs'
-  experiment_name: 'minist_smoothl1_beltrami'
-  save_freq: 10  # 每多少个epoch保存一次checkpoint
-  val_freq: 5    # 每多少个epoch进行一次验证
   
-# 可视化参数
+  # 实验名称
+  # - 用于区分不同的实验
+  # - 建议命名规则：数据集_损失函数_特殊设置
+  # - 示例：'minist_mse_beltrami', 'cifar_huber_warmup'
+  experiment_name: 'gauss_mse'
+  
+  # Checkpoint保存频率（单位：epoch）
+  # - 较小值（5-10）：保存频繁，可以回溯更多状态，但占用磁盘空间
+  # - 较大值（20-50）：节省空间
+  # - 推荐：10（每10个epoch保存一次）
+  # - 注意：最后一个epoch和最优模型总是会保存
+  save_freq: 10
+  
+  # 验证频率（单位：epoch）
+  # - 较小值（1-5）：频繁验证，及时发现问题，但训练慢
+  # - 较大值（10-20）：训练快，但可能错过最优点
+  # - 推荐：5（每5个epoch验证一次）
+  val_freq: 5
+  
+# ==================== 可视化参数 ====================
 visualization_params:
-  enable_mesh_vis: true  # 是否启用网格可视化
-  vis_num_samples: 1     # 可视化的样本数量（单通道时有效）
+  # 是否启用网格可视化
+  # - true: 每次验证时生成网格对比图并保存到TensorBoard（推荐）
+  # - false: 不生成可视化（节省时间和磁盘）
+  enable_mesh_vis: true
   
-# checkpoint 参数
+  # 可视化的样本数量
+  # - 单通道图像：可以设置多个样本（1-5）
+  # - 多通道图像：每个通道都会可视化
+  # - 注意：过多会影响训练速度
+  vis_num_samples: 1
+  
+# ==================== Checkpoint 参数 ====================
 checkpoint_params:
-  resume_from_checkpoint: null  # 断点续训路径，如 './outputs/xxx/checkpoints/last.pth'
-  save_best: true  # 是否保存最优模型
+  # 断点续训路径
+  # - null: 从头开始训练
+  # - 路径字符串: 从指定checkpoint恢复训练
+  # - 示例：'./outputs/exp_20231215_123456/checkpoints/last.pth'
+  # - 用途：
+  #   * 训练中断后继续
+  #   * 在已训练模型基础上fine-tune
+  resume_from_checkpoint: null
   
-# 学习率调度器参数
+  # 是否保存最优模型
+  # - true: 额外保存验证损失最低的模型为 'best_model.pth'（推荐）
+  # - false: 只保存最新的 'last.pth'
+  save_best: true
+  
+# ==================== 学习率调度器参数 ====================
+# 学习率调度器：动态调整学习率，提高训练效果
+# 
+# 📌 选择指南：
+#   1. 不确定用什么？ → 'CosineAnnealingLR' 或 'ReduceLROnPlateau'
+#   2. 想要快速收敛？ → 'OneCycleLR'
+#   3. 想要周期性探索？ → 'CosineAnnealingWarmRestarts'
+#   4. 简单稳定的策略？ → 'StepLR' 或 'MultiStepLR'
+#
+# 可选类型详解：
+#   
+#   • 'CosineAnnealingLR': 余弦退火（最推荐）
+#     - 特点：学习率按余弦曲线平滑下降
+#     - 优点：平滑、稳定、效果好
+#     - 适用：几乎所有场景
+#     - 注意：T_max 必须设为 num_epochs，否则学习率会反弹！
+#   
+#   • 'ReduceLROnPlateau': 自适应调整（次推荐）
+#     - 特点：验证损失不下降时才降低学习率
+#     - 优点：自适应，无需手动设置衰减时机
+#     - 适用：不确定何时降低学习率的场景
+#     - 缺点：依赖验证频率，可能反应较慢
+#   
+#   • 'CosineAnnealingWarmRestarts': 周期性重启
+#     - 特点：周期性将学习率重置到高值
+#     - 优点：可以跳出局部最优
+#     - 适用：损失震荡、难以收敛的场景
+#   
+#   • 'StepLR': 固定步长衰减
+#     - 特点：每隔固定epoch降低学习率
+#     - 优点：简单、可预测
+#     - 适用：传统训练流程
+#   
+#   • 'MultiStepLR': 多里程碑衰减
+#     - 特点：在指定的epoch降低学习率
+#     - 优点：精确控制衰减时机
+#     - 适用：已知最佳衰减时机的场景
+#   
+#   • 'ExponentialLR': 指数衰减
+#     - 特点：每个epoch按固定比例衰减
+#     - 优点：持续衰减，适合长期训练
+#   
+#   • 'OneCycleLR': 一周期策略
+#     - 特点：学习率先上升后下降（超收敛）
+#     - 优点：训练极快，通常能快速达到好效果
+#     - 适用：快速实验、已知较好的max_lr
+#     - 注意：需要仔细调参，不当可能崩溃
+#   
+#   • 'None' 或 null: 不使用调度器
+#     - 适用：learning_rate已经很小，或想固定学习率
+
 scheduler_params:
-  type: 'CosineAnnealingLR'  # 'StepLR', 'CosineAnnealingLR', 'ReduceLROnPlateau'
-  T_max: 100  # CosineAnnealingLR 参数
-  step_size: 30  # StepLR 参数
-  gamma: 0.5  # StepLR 参数dd
-  patience: 10  # ReduceLROnPlateau 参数
+  # ===== 当前使用的调度器类型 =====
+  type: 'CosineAnnealingLR'
   
-# 随机种子
+  # ========== CosineAnnealingLR 参数 ==========
+  # 余弦周期长度
+  # ⚠️ 重要：必须设为 num_epochs，否则学习率会反弹！
+  # - 原理：学习率按余弦函数从 learning_rate 降到 eta_min
+  # - T_max=200, num_epochs=200: 完美下降 ✓
+  # - T_max=100, num_epochs=200: 前100轮下降，后100轮又上升 ✗
+  T_max: 200
+  
+  # 最小学习率
+  # - 学习率不会低于这个值
+  # - 推荐：1e-7 到 1e-6
+  eta_min: 1.0e-7
+  
+  # ========== CosineAnnealingWarmRestarts 参数 ==========
+  # 第一次重启前的周期长度
+  # - T_0=10: 前10个epoch学习率降到最低，然后重启
+  T_0: 10
+  
+  # 周期倍增因子
+  # - T_mult=1: 每次周期相同（10, 10, 10, ...）
+  # - T_mult=2: 周期递增（10, 20, 40, ...）
+  # - 推荐：2（逐渐增加周期）
+  T_mult: 2
+  
+  # ========== StepLR 参数 ==========
+  # 衰减步长：每隔多少个epoch衰减一次
+  # - step_size=30: 第30, 60, 90... epoch时衰减
+  # - 推荐：num_epochs / 3 到 num_epochs / 5
+  step_size: 30
+  
+  # 衰减因子
+  # - gamma=0.5: 每次衰减到原来的50%
+  # - gamma=0.1: 每次衰减到原来的10%（激进）
+  # - 推荐：0.5（温和）到 0.1（激进）
+  gamma: 0.5
+  
+  # ========== MultiStepLR 参数 ==========
+  # 里程碑：在这些epoch进行衰减
+  # - 示例：[60, 120, 160] 表示在第60, 120, 160轮衰减
+  # - 建议：根据总epoch数设置，如200轮可设为[60, 120, 160]
+  milestones: [60, 120, 160]
+  # gamma: 0.2  # 与StepLR共用
+  
+  # ========== ReduceLROnPlateau 参数 ==========
+  # 耐心值：验证损失多少个epoch不下降才衰减
+  # - patience=10: 连续10个epoch验证损失不下降才降低学习率
+  # - 较大值（15-20）：更保守，避免过早衰减
+  # - 较小值（5-10）：更激进
+  # - 推荐：10
+  patience: 10
+  
+  # 最小学习率
+  min_lr: 1.0e-7
+  # gamma: 0.5  # 衰减因子，与StepLR共用
+  
+  # ========== OneCycleLR 参数 ==========
+  # 最大学习率（周期最高点）
+  # - 通常是初始learning_rate的5-10倍
+  # - 建议：从较小倍数开始尝试（如3-5倍）
+  # - 过大可能导致训练崩溃
+  max_lr: 0.005
+  
+  # 上升阶段占比
+  # - pct_start=0.3: 前30%的训练时间学习率上升，后70%下降
+  # - 推荐：0.3（标准值）
+  pct_start: 0.3
+  
+  # 初始学习率除数
+  # - 初始学习率 = max_lr / div_factor
+  # - div_factor=25: 初始lr = 0.005/25 = 0.0002
+  div_factor: 25.0
+  
+  # 最终学习率除数
+  # - 最终学习率 = max_lr / final_div_factor
+  # - final_div_factor=10000: 最终lr = 0.005/10000 = 5e-7
+  final_div_factor: 10000.0
+  
+  # ========== 学习率预热（Warmup）参数 ==========
+  # 预热的epoch数
+  # - 0: 不使用预热
+  # - 5-10: 前几个epoch学习率线性增加到设定值
+  # - 作用：避免初期梯度过大导致的不稳定
+  # - 适用：大batch size训练、Transformer等
+  # - 注意：OneCycleLR自带预热，无需额外设置
+  warmup_epochs: 0
+  
+# ==================== 随机种子 ====================
+# 随机种子：确保实验可复现
+# - 固定值（如42）：每次运行结果相同，便于调试和对比
+# - 不同值：可以测试模型的稳定性
+# - 推荐：42（传统ML的幸运数字 😊）
 seed: 42
 
-# 损失参数（可配置复合损失）
+# ==================== 损失函数参数 ====================
+# 复合损失函数：多个损失项的加权组合
+# 总损失 = w_data*数据损失 + w_curl*旋度损失 + w_lap*拉普拉斯损失 + 
+#          w_range*范围损失 + w_beltrami*Beltrami损失
+#
+# 📌 调参建议：
+#   1. 先只用数据损失（w_data=1, 其他=0）确保基本功能正常
+#   2. 逐步添加物理约束，观察效果
+#   3. 权重比例很重要，需要根据损失数值大小调整
+
 loss_params:
-  w_data: 1
-  w_curl: 1.0e-3 
-  w_lap: 1.0e-4
+  # ===== 数据损失权重 =====
+  # 衡量预测网格与真实网格的差异
+  # - 主要损失项，必须 > 0
+  # - 较大值（10-100）：更重视拟合精度
+  # - 较小值（1-5）：允许更多物理约束的影响
+  # - 推荐：10（基准值）
+  w_data: 10
+  
+  # ===== 旋度损失权重（无旋约束）=====
+  # 惩罚向量场的旋度，鼓励保守场
+  # - 0: 不使用旋度约束
+  # - 0.01-1.0: 弱约束，允许少量旋转
+  # - 适用场景：期望映射保持无旋性（如梯度场、势流）
+  # - 注意：过大会导致欠拟合
+  w_curl: 0
+  
+  # ===== 拉普拉斯损失权重（平滑性约束）=====
+  # 惩罚场的拉普拉斯（二阶导数），鼓励平滑
+  # - 0: 不使用平滑约束
+  # - 0.01-1.0: 鼓励网格平滑变化
+  # - 适用场景：避免网格剧烈振荡
+  # - 注意：过大会丢失细节
+  w_lap: 0
+  
+  # ===== 范围损失权重 =====
+  # 惩罚超出合理范围的预测值
+  # - 0: 不使用范围约束
+  # - 0.1-1.0: 限制预测在合理范围内
+  # - 适用场景：已知坐标范围，避免异常预测
   w_range: 0.0
-  huber_beta: 0.05 #0.01
-  w_beltrami: 1.0e-3
+  
+  # ===== Huber损失参数 =====
+  # Huber损失的转折点（delta参数）
+  # - 作用：对异常值更鲁棒（比MSE更稳健）
+  # - 较小值（0.01）：接近L1损失，对异常值鲁棒
+  # - 较大值（1.0）：接近L2损失（MSE）
+  # - 推荐：0.01（鲁棒版MSE）
+  # - null: 使用标准MSE损失
+  huber_beta: 0.01
+  
+  # ===== Beltrami系数损失权重 =====
+  # 惩罚Beltrami系数（衡量共形畸变）
+  # - 0: 不使用Beltrami约束
+  # - 1e-4到1e-3: 鼓励保角（共形）映射
+  # - 适用场景：
+  #   * 最优传输（Optimal Transport）
+  #   * 保角映射（Conformal Mapping）
+  #   * 需要保持局部角度的变换
+  # - 原理：Beltrami系数接近0表示共形映射
+  # - 注意：
+  #   * 计算开销较大
+  #   * 权重需要仔细调整（通常很小，1e-4到1e-3）
+  #   * 过大会严重约束模型，导致欠拟合
+  w_beltrami: 0.
+
+# ==================== 使用建议 ====================
+# 
+# 🔧 常用配置组合：
+#
+# 1. 基础配置（推荐新手）：
+#    w_data=1, w_curl=0, w_lap=0, w_range=0, w_beltrami=0
+#    huber_beta=0.01
+#
+# 2. 平滑网格：
+#    w_data=10, w_curl=0, w_lap=0.1, w_range=0, w_beltrami=0
+#    huber_beta=0.01
+#
+# 3. 保角映射（OT）：
+#    w_data=10, w_curl=0, w_lap=0, w_range=0, w_beltrami=1e-3
+#    huber_beta=0.01
+#
+# 4. 完整物理约束：
+#    w_data=10, w_curl=0.1, w_lap=0.05, w_range=0.1, w_beltrami=1e-3
+#    huber_beta=0.01
+#
+# 📊 调参流程：
+#   1. 先用基础配置训练，确保收敛
+#   2. 观察验证集的可视化结果，找出问题
+#   3. 针对性添加约束：
+#      - 网格不平滑 → 增加 w_lap
+#      - 有不合理的旋转 → 增加 w_curl
+#      - 角度畸变严重 → 增加 w_beltrami
+#   4. 调整权重，使各项损失在同一数量级
+#
+# 💡 查看TensorBoard：
+#   训练时会记录各项损失，可通过TensorBoard观察：
+#   $ tensorboard --logdir=./outputs/your_experiment/tensorboard
 

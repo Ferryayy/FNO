@@ -16,6 +16,7 @@ from src.model import FNO2d
 from src.datasets import get_data_loaders
 from src.trainer import Trainer
 from src.loss import create_loss_fn
+from src.scheduler import create_scheduler, print_lr_schedule_info
 from src.utils import (
     setup_seed, 
     load_config, 
@@ -86,43 +87,7 @@ def create_optimizer(model, config):
     return optimizer
 
 
-def create_scheduler(optimizer, config):
-    """
-    根据配置创建学习率调度器
-    
-    Args:
-        optimizer (torch.optim.Optimizer): 优化器
-        config (dict): 配置字典
-        
-    Returns:
-        torch.optim.lr_scheduler: 调度器
-    """
-    scheduler_params = config['scheduler_params']
-    scheduler_type = scheduler_params['type']
-    
-    if scheduler_type == 'StepLR':
-        scheduler = torch.optim.lr_scheduler.StepLR(
-            optimizer,
-            step_size=scheduler_params['step_size'],
-            gamma=scheduler_params['gamma']
-        )
-    elif scheduler_type == 'CosineAnnealingLR':
-        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-            optimizer,
-            T_max=scheduler_params['T_max']
-        )
-    elif scheduler_type == 'ReduceLROnPlateau':
-        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer,
-            mode='min',
-            patience=scheduler_params['patience'],
-            factor=scheduler_params['gamma']
-        )
-    else:
-        scheduler = None
-        logging.warning(f"未知的调度器类型: {scheduler_type}, 将不使用调度器")
-    
-    return scheduler
+# 学习率调度器创建函数已移至 src/scheduler.py
 
 
 
@@ -192,9 +157,10 @@ def main(args):
     logger.info(f"权重衰减: {config['train_params']['weight_decay']}")
     
     # 10. 创建学习率调度器
-    scheduler = create_scheduler(optimizer, config)
-    if scheduler:
-        logger.info(f"学习率调度器: {scheduler.__class__.__name__}")
+    scheduler = create_scheduler(optimizer, config, train_loader)
+    
+    # 打印学习率调度信息
+    print_lr_schedule_info(config, train_loader)
     
     # 11. 创建损失函数
     loss_fn = create_loss_fn(config)

@@ -7,6 +7,7 @@ import os
 import torch
 import logging
 from torch.utils.tensorboard import SummaryWriter
+from torch.optim.lr_scheduler import ReduceLROnPlateau, OneCycleLR
 from tqdm import tqdm
 from .utils import AverageMeter, visualize_mesh_comparison, visualize_mesh_multichannel
 
@@ -154,11 +155,13 @@ class Trainer:
             if (epoch + 1) % self.save_freq == 0 or epoch == self.num_epochs - 1:
                 self._save_checkpoint(epoch, is_best)
             
-            # 更新学习率
-            if self.scheduler is not None:
-                if isinstance(self.scheduler, torch.optim.lr_scheduler.ReduceLROnPlateau):
+            # 更新学习率（OneCycleLR 在训练循环中每个batch更新，这里跳过）
+            if self.scheduler is not None and not isinstance(self.scheduler, OneCycleLR):
+                if isinstance(self.scheduler, ReduceLROnPlateau):
+                    # ReduceLROnPlateau 需要验证损失
                     self.scheduler.step(val_loss if 'val_loss' in locals() else train_loss)
                 else:
+                    # 其他调度器按epoch更新
                     self.scheduler.step()
         
         self.logger.info("\n" + "=" * 60)
@@ -203,6 +206,10 @@ class Trainer:
                 torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.gradient_clip)
             
             self.optimizer.step()
+            
+            # OneCycleLR 在每个batch后更新学习率
+            if self.scheduler is not None and isinstance(self.scheduler, OneCycleLR):
+                self.scheduler.step()
             
             # 更新总损失统计
             loss_meter.update(loss.item(), inputs.size(0))

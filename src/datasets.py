@@ -246,27 +246,48 @@ class RealOTDataset(Dataset):
             logger.info(f"找到 {len(self.data_pairs)} 对数据")
     
     def _find_data_pairs(self):
-        """查找所有匹配的图像和网格文件对"""
+        """
+        查找所有匹配的图像和网格文件对
+        
+        支持的文件名格式：
+        - 标准格式：1_xxx.png <-> 1_xxx.npy
+        - 无下划线：1.png <-> 1.npy
+        - 带后缀：1_xxx_mesh.npy <-> 1_xxx.png
+        
+        匹配规则：
+        1. 提取文件名开头的数字作为ID
+        2. 匹配具有相同ID的图像和网格文件
+        """
         pairs = []
         
         # 获取图像目录中的所有文件
         image_files = {}
         for ext in ['*.jpg', '*.jpeg', '*.png', '*.bmp']:
             for img_path in Path(self.image_dir).glob(ext):
-                # 提取前缀数字，例如 9985_cifar_airplane.jpg -> 9985
-                match = re.match(r'(\d+)_.*', img_path.name)
+                # 提取前缀数字，支持多种格式：
+                # - 1_xxx.png -> 1
+                # - 1.png -> 1
+                # - 9985_cifar_airplane.jpg -> 9985
+                match = re.match(r'^(\d+)', img_path.stem)  # stem = 不含扩展名的文件名
                 if match:
                     prefix = int(match.group(1))
-                    image_files[prefix] = str(img_path)
+                    # 如果同一ID有多个文件，优先使用带下划线的（更具体）
+                    if prefix not in image_files or '_' in img_path.stem:
+                        image_files[prefix] = str(img_path)
         
         # 获取网格目录中的所有.npy文件
         mesh_files = {}
         for mesh_path in Path(self.mesh_dir).glob('*.npy'):
-            # 提取前缀数字，例如 9985_cifar_airplane_mesh.npy -> 9985
-            match = re.match(r'(\d+)_.*\.npy', mesh_path.name)
+            # 提取前缀数字，支持多种格式：
+            # - 1_xxx.npy -> 1
+            # - 1.npy -> 1
+            # - 9985_cifar_airplane_mesh.npy -> 9985
+            match = re.match(r'^(\d+)', mesh_path.stem)
             if match:
                 prefix = int(match.group(1))
-                mesh_files[prefix] = str(mesh_path)
+                # 如果同一ID有多个文件，优先使用带下划线的（更具体）
+                if prefix not in mesh_files or '_' in mesh_path.stem:
+                    mesh_files[prefix] = str(mesh_path)
         
         # 匹配图像和网格文件
         common_prefixes = sorted(set(image_files.keys()) & set(mesh_files.keys()))
@@ -286,6 +307,18 @@ class RealOTDataset(Dataset):
             logger.info(f"匹配到 {len(pairs)} 对数据")
             if len(pairs) > 0:
                 logger.info(f"示例文件对: {pairs[0]['image_path']} <-> {pairs[0]['mesh_path']}")
+            
+            # 打印未匹配的文件（帮助调试）
+            unmatched_images = set(image_files.keys()) - set(mesh_files.keys())
+            unmatched_meshes = set(mesh_files.keys()) - set(image_files.keys())
+            if unmatched_images:
+                logger.warning(f"有 {len(unmatched_images)} 个图像文件没有对应的网格文件")
+                if len(unmatched_images) <= 5:  # 只显示前5个
+                    logger.warning(f"未匹配的图像ID: {sorted(unmatched_images)}")
+            if unmatched_meshes:
+                logger.warning(f"有 {len(unmatched_meshes)} 个网格文件没有对应的图像文件")
+                if len(unmatched_meshes) <= 5:  # 只显示前5个
+                    logger.warning(f"未匹配的网格ID: {sorted(unmatched_meshes)}")
         
         return pairs
     

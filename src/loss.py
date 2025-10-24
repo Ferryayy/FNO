@@ -78,7 +78,7 @@ class CompositeLoss:
         
         # 1. 数据拟合损失
         if self.w_data > 0.0:
-            data_loss = self.smooth_l1(pred, target)
+            data_loss = self.mse_loss(pred, target)
             total_loss = total_loss + self.w_data * data_loss
             loss_dict['data'] = data_loss.item()
         
@@ -102,7 +102,8 @@ class CompositeLoss:
         
         # 5. Beltrami系数约束
         if self.w_beltrami > 0.0 and base_grid is not None:
-            beltrami_loss = self._compute_beltrami_loss(pred, base_grid)
+            # beltrami_loss = self._compute_beltrami_loss(pred, base_grid)
+            beltrami_loss = 0.0
             total_loss = total_loss + self.w_beltrami * beltrami_loss
             loss_dict['beltrami'] = beltrami_loss.item()
         
